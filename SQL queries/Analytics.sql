@@ -7,7 +7,7 @@ SELECT
     COUNT(*) AS total_tracks,
     ROUND(SUM(CAST(ms_played AS BIGINT)) / 3600000.0, 2) AS total_hours
 FROM 
-    spotify_history
+    spotify_cleaned_dataset
 GROUP BY 
     DATENAME(weekday, ts),
     DATEPART(weekday, ts)
@@ -25,7 +25,7 @@ SELECT
     COUNT(*) AS total_tracks,
     ROUND(SUM(CAST(ms_played AS BIGINT)) / 3600000.0, 2) AS total_hours
 FROM 
-    spotify_history
+    spotify_cleaned_dataset
 GROUP BY 
     DATEPART(hour, CAST(ts AS DATETIME2))
 ORDER BY 
@@ -44,7 +44,7 @@ SELECT
     ROUND(SUM(CAST(ms_played AS BIGINT)) / 3600000.0, 2) AS total_hours,
     ROUND((COUNT(*) * 100.0) / SUM(COUNT(*)) OVER(), 2) AS track_percentage
 FROM 
-    spotify_history
+    spotify_cleaned_dataset
 GROUP BY 
     CASE 
         WHEN DATEPART(hour, CAST(ts AS DATETIME2)) BETWEEN 5 AND 11 THEN 'Morning (5 AM - 11:59 AM)'
@@ -63,7 +63,7 @@ SELECT
     COUNT(*) AS total_tracks,
     ROUND(SUM(CAST(ms_played AS BIGINT)) / 3600000.0, 2) AS total_hours
 FROM 
-    spotify_history
+    spotify_cleaned_dataset
 GROUP BY 
     MONTH(CAST(ts AS DATETIME2)),
     DATENAME(month, CAST(ts AS DATETIME2))
@@ -81,7 +81,7 @@ SELECT
     COUNT(DISTINCT CAST(ts AS DATE)) AS active_days_count,
     ROUND(SUM(CAST(ms_played AS BIGINT)) / (COUNT(DISTINCT CAST(ts AS DATE)) * 3600000.0), 2) AS avg_hours_per_day
 FROM 
-    spotify_history
+    spotify_cleaned_dataset
 GROUP BY 
     DATENAME(weekday, CAST(ts AS DATETIME2)),
     DATEPART(weekday, CAST(ts AS DATETIME2))
@@ -99,7 +99,7 @@ SELECT
     ) AS avg_hours_per_active_day,
     COUNT(DISTINCT CAST(ts AS DATE)) AS total_active_days
 FROM 
-    spotify_history;
+    spotify_cleaned_dataset;
 
 -- Answer with total span days 
 SELECT 
@@ -110,7 +110,7 @@ SELECT
     ) AS avg_hours_per_calendar_day,
     DATEDIFF(day, MIN(CAST(ts AS DATE)), MAX(CAST(ts AS DATE))) + 1 AS total_span_days
 FROM 
-    spotify_history;
+    spotify_cleaned_dataset;
 
 -- Questions no 7:
 
@@ -121,7 +121,7 @@ SELECT TOP 1
     ROUND(SUM(CAST(ms_played AS BIGINT)) / 60000.0, 1) AS total_minutes,
     ROUND(SUM(CAST(ms_played AS BIGINT)) / 3600000.0, 2) AS total_hours
 FROM 
-    spotify_history
+    spotify_cleaned_dataset
 GROUP BY 
     CAST(ts AS DATE),
     DATENAME(weekday, CAST(ts AS DATETIME2))
@@ -137,7 +137,7 @@ SELECT TOP 10
     ROUND(SUM(CAST(ms_played AS BIGINT)) / 3600000.0, 2) AS total_hours,
     COUNT(*) AS total_tracks
 FROM 
-    spotify_history
+    spotify_cleaned_dataset
 WHERE 
     artist_name IS NOT NULL
 GROUP BY 
@@ -152,7 +152,7 @@ ORDER BY
 SELECT TOP 10
  artist_name,
  ROUND(SUM(CAST(ms_played AS BIGINT)) / 3600000.0, 2) AS total_hours
-FROM spotify_history
+FROM spotify_cleaned_dataset
 GROUP BY artist_name
 ORDER BY total_hours DESC
 
@@ -166,7 +166,7 @@ WITH Top5Artists AS (
         COUNT(*) AS artist_plays,
         SUM(CAST(ms_played AS BIGINT)) AS artist_ms
     FROM 
-        spotify_history
+        spotify_cleaned_dataset
     WHERE 
         artist_name IS NOT NULL
     GROUP BY 
@@ -179,7 +179,7 @@ OverallStats AS (
         COUNT(*) AS total_plays,
         SUM(CAST(ms_played AS BIGINT)) AS total_ms
     FROM 
-        spotify_history
+        spotify_cleaned_dataset
 )
 SELECT 
     SUM(t.artist_plays) AS top5_total_plays,
@@ -206,7 +206,7 @@ WITH YearlyArtistRank AS (
             ORDER BY SUM(CAST(ms_played AS BIGINT)) DESC
         ) AS rank_in_year
     FROM 
-        spotify_history
+        spotify_cleaned_dataset
     WHERE 
         artist_name IS NOT NULL
     GROUP BY 
@@ -224,4 +224,73 @@ WHERE
     rank_in_year = 1
 ORDER BY 
     listening_year ASC;
+
+
+-- Question no 12:
+
+SELECT TOP 10
+    artist_name,
+    COUNT(*) AS total_plays,
+    ROUND(SUM(CAST(ms_played AS BIGINT)) / 3600000.0, 2) AS total_hours,
+    -- Converts average milliseconds to minutes
+    ROUND(AVG(CAST(ms_played AS FLOAT)) / 60000.0, 2) AS avg_song_duration_minutes
+FROM 
+    spotify_cleaned_dataset
+WHERE 
+    artist_name IS NOT NULL
+GROUP BY 
+    artist_name
+HAVING 
+    COUNT(*) >= 50 -- Filters out one-off plays for statistical significance
+ORDER BY 
+    avg_song_duration_minutes DESC;
+
+--  Question No 13:
+
+
+SELECT 
+    SUM(plays) AS top10_total_plays,
+    ROUND(SUM(plays) * 100.0 / MAX(total_library_plays), 2) AS top10_plays_percentage,
+    ROUND(SUM(hours), 2) AS top10_total_hours,
+    ROUND(SUM(hours) * 100.0 / MAX(total_library_hours), 2) AS top10_hours_percentage
+FROM (
+    SELECT TOP 10
+        artist_name,
+        COUNT(*) AS plays,
+        SUM(CAST(ms_played AS BIGINT)) / 3600000.0 AS hours,
+        SUM(COUNT(*)) OVER() AS total_library_plays,
+        SUM(SUM(CAST(ms_played AS BIGINT))) OVER() / 3600000.0 AS total_library_hours
+    FROM 
+        spotify_cleaned_dataset
+    WHERE 
+        artist_name IS NOT NULL
+    GROUP BY 
+        artist_name
+    ORDER BY 
+        plays DESC
+) t;
+
+
+--  Question No 14:
+SELECT TOP 10
+    artist_name,
+    COUNT(*) AS total_plays,
+    -- Count rows where Spotify's skipped flag is true
+    SUM(CASE WHEN LOWER(CAST(skipped AS VARCHAR(10))) IN ('true', '1') THEN 1 ELSE 0 END) AS skipped_plays,
+    -- Calculate skip rate percentage
+    ROUND(
+        SUM(CASE WHEN LOWER(CAST(skipped AS VARCHAR(10))) IN ('true', '1') THEN 1.0 ELSE 0.0 END) * 100.0 / COUNT(*), 
+        2
+    ) AS skip_rate_percentage,
+    ROUND(SUM(CAST(ms_played AS BIGINT)) / 3600000.0, 2) AS total_hours
+FROM 
+    spotify_cleaned_dataset
+WHERE 
+    artist_name IS NOT NULL
+GROUP BY 
+    artist_name
+HAVING 
+    COUNT(*) >= 50 -- Filters out one-off plays for statistical significance
+ORDER BY 
+    skip_rate_percentage DESC;
 
