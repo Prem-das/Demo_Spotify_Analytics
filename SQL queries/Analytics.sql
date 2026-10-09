@@ -128,7 +128,25 @@ GROUP BY
 ORDER BY 
     total_hours DESC;
 
+
+
 -- Question No 8:
+
+SELECT TOP 10
+    artist_name,
+    ROUND(SUM(CAST(ms_played AS BIGINT)) / 3600000.0, 2) AS total_hours,
+    COUNT(*) AS total_tracks
+FROM 
+    spotify_history
+WHERE 
+    artist_name IS NOT NULL
+GROUP BY 
+    artist_name
+ORDER BY 
+    total_hours DESC;
+
+
+-- Question No 9:
 
 
 SELECT TOP 10
@@ -139,5 +157,71 @@ GROUP BY artist_name
 ORDER BY total_hours DESC
 
 
--- Question No 9:
+
+-- Questions No. 10:
+
+WITH Top5Artists AS (
+    SELECT TOP 5
+        artist_name,
+        COUNT(*) AS artist_plays,
+        SUM(CAST(ms_played AS BIGINT)) AS artist_ms
+    FROM 
+        spotify_history
+    WHERE 
+        artist_name IS NOT NULL
+    GROUP BY 
+        artist_name
+    ORDER BY 
+        artist_plays DESC
+),
+OverallStats AS (
+    SELECT 
+        COUNT(*) AS total_plays,
+        SUM(CAST(ms_played AS BIGINT)) AS total_ms
+    FROM 
+        spotify_history
+)
+SELECT 
+    SUM(t.artist_plays) AS top5_total_plays,
+    ROUND(SUM(t.artist_plays) * 100.0 / o.total_plays, 2) AS plays_percentage,
+    ROUND(SUM(t.artist_ms) / 3600000.0, 2) AS top5_total_hours,
+    ROUND(SUM(t.artist_ms) * 100.0 / o.total_ms, 2) AS hours_percentage
+FROM 
+    Top5Artists t
+CROSS JOIN 
+    OverallStats o
+GROUP BY 
+    o.total_plays, 
+    o.total_ms;
+
+-- Question No 11:
+WITH YearlyArtistRank AS (
+    SELECT 
+        YEAR(CAST(ts AS DATETIME2)) AS listening_year,
+        artist_name,
+        COUNT(*) AS total_plays,
+        ROUND(SUM(CAST(ms_played AS BIGINT)) / 3600000.0, 2) AS total_hours,
+        ROW_NUMBER() OVER (
+            PARTITION BY YEAR(CAST(ts AS DATETIME2)) 
+            ORDER BY SUM(CAST(ms_played AS BIGINT)) DESC
+        ) AS rank_in_year
+    FROM 
+        spotify_history
+    WHERE 
+        artist_name IS NOT NULL
+    GROUP BY 
+        YEAR(CAST(ts AS DATETIME2)),
+        artist_name
+)
+SELECT 
+    listening_year,
+    artist_name AS top_artist,
+    total_plays,
+    total_hours
+FROM 
+    YearlyArtistRank
+WHERE 
+    rank_in_year = 1
+ORDER BY 
+    listening_year ASC;
 
